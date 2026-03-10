@@ -36,6 +36,27 @@ export type IntentTracePayload = {
   debug_tasks_error: string | null;
 };
 
+export type RegistryResourceItem = {
+  resource_id: string;
+  resource_type: string;
+  namespace: string;
+  source: string;
+  semantic_tags: string[];
+  label?: string | null;
+};
+
+export type PlayerTagItem = {
+  id: number;
+  player_id: string;
+  tag: string;
+  resource_id: string;
+  resource_type: string;
+  namespace: string;
+  source: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
 function normalizeBaseUrl(baseUrlOverride?: string): string {
   const override = toAbsoluteBaseUrl(baseUrlOverride);
   if (override) {
@@ -468,4 +489,341 @@ export async function fetchIntentTrace(playerId: string): Promise<{
     data: payload,
     error: null,
   };
+}
+
+function asRegistryResourceItem(value: unknown): RegistryResourceItem | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  const resourceId = String(row.resource_id || "").trim();
+  if (!resourceId) {
+    return null;
+  }
+
+  return {
+    resource_id: resourceId,
+    resource_type: String(row.resource_type || "item").trim() || "item",
+    namespace: String(row.namespace || "minecraft").trim() || "minecraft",
+    source: String(row.source || "registry").trim() || "registry",
+    semantic_tags: Array.isArray(row.semantic_tags)
+      ? row.semantic_tags.map((tag) => String(tag || "").trim()).filter(Boolean)
+      : [],
+    label: typeof row.label === "string" ? row.label : null,
+  };
+}
+
+function asPlayerTagItem(value: unknown): PlayerTagItem | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  const id = Number(row.id);
+  if (!Number.isFinite(id)) {
+    return null;
+  }
+
+  const playerId = String(row.player_id || "").trim();
+  const tag = String(row.tag || "").trim();
+  const resourceId = String(row.resource_id || "").trim();
+  if (!playerId || !tag || !resourceId) {
+    return null;
+  }
+
+  return {
+    id,
+    player_id: playerId,
+    tag,
+    resource_id: resourceId,
+    resource_type: String(row.resource_type || "item").trim() || "item",
+    namespace: String(row.namespace || "minecraft").trim() || "minecraft",
+    source: typeof row.source === "string" ? row.source : null,
+    created_at: Number.isFinite(Number(row.created_at)) ? Number(row.created_at) : 0,
+    updated_at: Number.isFinite(Number(row.updated_at)) ? Number(row.updated_at) : 0,
+  };
+}
+
+export async function searchRegistryResources(
+  query: string,
+  options?: { limit?: number; source?: string; baseUrlOverride?: string },
+): Promise<{
+  ok: boolean;
+  status: number;
+  baseUrl: string;
+  data: RegistryResourceItem[];
+  error: string | null;
+}> {
+  const baseUrl = normalizeBaseUrl(options?.baseUrlOverride);
+  const normalized = String(query || "").trim();
+
+  if (!normalized) {
+    return {
+      ok: true,
+      status: 200,
+      baseUrl,
+      data: [],
+      error: null,
+    };
+  }
+
+  const params = new URLSearchParams({ q: normalized });
+  if (typeof options?.limit === "number" && Number.isFinite(options.limit)) {
+    params.set("limit", String(Math.max(1, Math.min(100, Math.floor(options.limit)))));
+  }
+  if (options?.source) {
+    params.set("source", String(options.source));
+  }
+
+  const requestUrl = `${baseUrl}/registry/resources/search?${params.toString()}`;
+  try {
+    const response = await fetch(requestUrl, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    const rawItems =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>).items
+        : null;
+    const items = Array.isArray(rawItems)
+      ? rawItems.map((row) => asRegistryResourceItem(row)).filter((row): row is RegistryResourceItem => row !== null)
+      : [];
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        baseUrl,
+        data: items,
+        error: `backend returned ${response.status}`,
+      };
+    }
+
+    return { ok: true, status: response.status, baseUrl, data: items, error: null };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 503,
+      baseUrl,
+      data: [],
+      error: error instanceof Error ? error.message : "network error",
+    };
+  }
+}
+
+export async function listPlayerTags(
+  playerId: string,
+  baseUrlOverride?: string,
+): Promise<{
+  ok: boolean;
+  status: number;
+  baseUrl: string;
+  data: PlayerTagItem[];
+  tags: Record<string, string[]>;
+  error: string | null;
+}> {
+  const baseUrl = normalizeBaseUrl(baseUrlOverride);
+  const normalizedPlayerId = String(playerId || "").trim();
+  if (!normalizedPlayerId) {
+    return {
+      ok: false,
+      status: 400,
+      baseUrl,
+      data: [],
+      tags: {},
+      error: "playerId is required",
+    };
+  }
+
+  const requestUrl = `${baseUrl}/registry/player-tags/${encodeURIComponent(normalizedPlayerId)}`;
+  try {
+    const response = await fetch(requestUrl, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    const rawItems =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>).items
+        : null;
+    const items = Array.isArray(rawItems)
+      ? rawItems.map((row) => asPlayerTagItem(row)).filter((row): row is PlayerTagItem => row !== null)
+      : [];
+
+    const rawTags =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>).tags
+        : null;
+    const tags: Record<string, string[]> = {};
+    if (rawTags && typeof rawTags === "object" && !Array.isArray(rawTags)) {
+      for (const [key, value] of Object.entries(rawTags as Record<string, unknown>)) {
+        const token = String(key || "").trim();
+        if (!token) {
+          continue;
+        }
+        tags[token] = Array.isArray(value) ? value.map((row) => String(row || "").trim()).filter(Boolean) : [];
+      }
+    }
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        baseUrl,
+        data: items,
+        tags,
+        error: `backend returned ${response.status}`,
+      };
+    }
+
+    return { ok: true, status: response.status, baseUrl, data: items, tags, error: null };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 503,
+      baseUrl,
+      data: [],
+      tags: {},
+      error: error instanceof Error ? error.message : "network error",
+    };
+  }
+}
+
+export async function upsertPlayerTag(
+  payload: {
+    player: string;
+    tag: string;
+    resource: string;
+    resource_type?: string;
+    namespace?: string;
+    source?: string;
+  },
+  baseUrlOverride?: string,
+): Promise<{
+  ok: boolean;
+  status: number;
+  baseUrl: string;
+  data: PlayerTagItem | null;
+  error: string | null;
+}> {
+  const baseUrl = normalizeBaseUrl(baseUrlOverride);
+  const requestUrl = `${baseUrl}/registry/player-tags`;
+
+  try {
+    const response = await fetch(requestUrl, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+
+    const item =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? asPlayerTagItem((body as Record<string, unknown>).item)
+        : null;
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        baseUrl,
+        data: item,
+        error: `backend returned ${response.status}`,
+      };
+    }
+
+    return { ok: true, status: response.status, baseUrl, data: item, error: null };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 503,
+      baseUrl,
+      data: null,
+      error: error instanceof Error ? error.message : "network error",
+    };
+  }
+}
+
+export async function deletePlayerTag(
+  payload: { id?: number; player?: string; tag?: string },
+  baseUrlOverride?: string,
+): Promise<{
+  ok: boolean;
+  status: number;
+  baseUrl: string;
+  deleted: boolean;
+  error: string | null;
+}> {
+  const baseUrl = normalizeBaseUrl(baseUrlOverride);
+  const requestUrl = `${baseUrl}/registry/player-tags`;
+
+  try {
+    const response = await fetch(requestUrl, {
+      method: "DELETE",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+
+    const deleted =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? Boolean((body as Record<string, unknown>).deleted)
+        : false;
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        baseUrl,
+        deleted,
+        error: `backend returned ${response.status}`,
+      };
+    }
+
+    return { ok: true, status: response.status, baseUrl, deleted, error: null };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 503,
+      baseUrl,
+      deleted: false,
+      error: error instanceof Error ? error.message : "network error",
+    };
+  }
 }

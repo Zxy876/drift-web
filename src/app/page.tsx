@@ -46,6 +46,12 @@ export default function Home() {
         </Link>
         <Link
           className="inline-flex items-center justify-center rounded-lg border border-black/10 px-4 py-2 text-sm hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          href="/registry"
+        >
+          打开 Resource Registry
+        </Link>
+        <Link
+          className="inline-flex items-center justify-center rounded-lg border border-black/10 px-4 py-2 text-sm hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
           href="/about"
         >
           About Drift
