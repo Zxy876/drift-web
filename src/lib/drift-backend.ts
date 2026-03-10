@@ -1,12 +1,21 @@
 export const DEFAULT_DRIFT_BACKEND_URL = "http://127.0.0.1:8000";
 
-export function getDriftBackendBaseUrl(): string {
-  const envUrl =
-    process.env.DRIFT_BACKEND_URL ||
-    process.env.NEXT_PUBLIC_DRIFT_BACKEND_URL ||
-    DEFAULT_DRIFT_BACKEND_URL;
+function toAbsoluteBaseUrl(value: unknown): string | null {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return null;
+  }
 
-  return String(envUrl).trim().replace(/\/+$/, "");
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  return withProtocol.replace(/\/+$/, "");
+}
+
+const BASE_URL =
+  toAbsoluteBaseUrl(process.env.NEXT_PUBLIC_DRIFT_BACKEND_URL) ??
+  DEFAULT_DRIFT_BACKEND_URL;
+
+export function getDriftBackendBaseUrl(): string {
+  return BASE_URL;
 }
 
 export type WorldStatePayload = Record<string, unknown>;
@@ -28,9 +37,9 @@ export type IntentTracePayload = {
 };
 
 function normalizeBaseUrl(baseUrlOverride?: string): string {
-  const override = String(baseUrlOverride || "").trim();
+  const override = toAbsoluteBaseUrl(baseUrlOverride);
   if (override) {
-    return override.replace(/\/+$/, "");
+    return override;
   }
   return getDriftBackendBaseUrl();
 }

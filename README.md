@@ -26,10 +26,11 @@ Drift Web 是 Drift Backend 的 Web 控制台（v1 起步版）。
 npm install
 ```
 
-2. 配置后端地址（任选其一）：
+2. 配置后端地址：
 
 - 复制 `.env.example` 为 `.env.local`
-- 设置 `DRIFT_BACKEND_URL`（默认可用值：`http://127.0.0.1:8000`）
+- 设置 `NEXT_PUBLIC_DRIFT_BACKEND_URL`
+- 示例：`NEXT_PUBLIC_DRIFT_BACKEND_URL=https://drift-backend-production-c2a5.up.railway.app`
 
 3. 启动：
 
@@ -53,3 +54,9 @@ npm run dev
 npm run lint
 npm run build
 ```
+
+## Deployment Notes
+
+- 必需环境变量：`NEXT_PUBLIC_DRIFT_BACKEND_URL`
+- 本地示例：`NEXT_PUBLIC_DRIFT_BACKEND_URL=http://127.0.0.1:8000`
+- Railway 示例：`NEXT_PUBLIC_DRIFT_BACKEND_URL=https://drift-backend-production-c2a5.up.railway.app`
