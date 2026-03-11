@@ -6,7 +6,7 @@ export default function PoetryPage() {
       <header className="rounded-xl border border-black/10 p-5 dark:border-white/20">
         <h1 className="text-2xl font-semibold">Poetry Scene Generator</h1>
         <p className="mt-2 text-sm opacity-80">route: /poetry</p>
-        <p className="text-sm opacity-80">Poem → Concept → Resource → Fragment → Scene 的可视化调试入口。</p>
+        <p className="text-sm opacity-80">隐喻备案 → 诗歌输入 → 场景生成（Poem → Concept → Resource → Fragment → Scene）。</p>
       </header>
 
       <PoetryClient />

@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from "react";
 
-import { generatePoetryScene, type PoetryGeneratePayload } from "@/lib/drift-backend";
+import {
+  generatePoetryScene,
+  listPlayerTags,
+  upsertPlayerTag,
+  type PoetryGeneratePayload,
+} from "@/lib/drift-backend";
 
 function asObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -18,6 +23,8 @@ function asArray(value: unknown): unknown[] {
 export default function PoetryClient() {
   const [playerId, setPlayerId] = useState("vivn");
   const [poem, setPoem] = useState("月光沿着风声落下，\n雾在水边缠住旧船。\n我在火旁读一页未完成的梦。");
+  const [metaphorTag, setMetaphorTag] = useState("moon");
+  const [metaphorResource, setMetaphorResource] = useState("minecraft:lantern");
   const [sceneTheme, setSceneTheme] = useState("");
   const [sceneHint, setSceneHint] = useState("");
   const [maxResources, setMaxResources] = useState(12);
@@ -26,6 +33,64 @@ export default function PoetryClient() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [payload, setPayload] = useState<PoetryGeneratePayload | null>(null);
+  const [savingMetaphor, setSavingMetaphor] = useState(false);
+  const [loadingMetaphors, setLoadingMetaphors] = useState(false);
+  const [playerMetaphors, setPlayerMetaphors] = useState<Record<string, string[]>>({});
+
+  const loadMetaphors = async () => {
+    const normalizedPlayer = String(playerId || "").trim();
+    if (!normalizedPlayer) {
+      setError("player_id 不能为空");
+      return;
+    }
+
+    setLoadingMetaphors(true);
+    setError(null);
+    setInfo(null);
+
+    const result = await listPlayerTags(normalizedPlayer);
+    setLoadingMetaphors(false);
+
+    if (!result.ok) {
+      setError(result.error || "读取隐喻备案失败");
+      return;
+    }
+
+    setPlayerMetaphors(result.tags || {});
+    setInfo("已读取玩家隐喻备案");
+  };
+
+  const onRegisterMetaphor = async () => {
+    const normalizedPlayer = String(playerId || "").trim();
+    const normalizedTag = String(metaphorTag || "").trim().toLowerCase();
+    const normalizedResource = String(metaphorResource || "").trim().toLowerCase();
+
+    if (!normalizedPlayer || !normalizedTag || !normalizedResource) {
+      setError("player_id / metaphor_tag / resource_id 均不能为空");
+      return;
+    }
+
+    setSavingMetaphor(true);
+    setError(null);
+    setInfo(null);
+
+    const result = await upsertPlayerTag({
+      player: normalizedPlayer,
+      tag: normalizedTag,
+      resource: normalizedResource,
+      source: "poetry_metaphor",
+    });
+
+    setSavingMetaphor(false);
+
+    if (!result.ok) {
+      setError(result.error || "隐喻备案失败");
+      return;
+    }
+
+    setInfo("隐喻备案成功");
+    await loadMetaphors();
+  };
 
   const onGenerate = async () => {
     const normalizedPlayer = String(playerId || "").trim();
@@ -71,13 +136,14 @@ export default function PoetryClient() {
       resourceWeights: asObject(row?.resource_weights) ?? {},
       selectedFragments: asArray(row?.selected_fragments),
       worldPatch: asObject(row?.world_patch),
+      playerTagMatches: asArray(row?.player_tag_matches),
     };
   }, [payload]);
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_1.8fr]">
       <section className="rounded-xl border border-black/10 p-4 dark:border-white/20">
-        <h2 className="text-base font-semibold">Generate</h2>
+        <h2 className="text-base font-semibold">Step 1 · 隐喻备案</h2>
 
         {error && (
           <article className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
@@ -101,6 +167,56 @@ export default function PoetryClient() {
               className="w-full rounded-lg border border-black/10 bg-transparent px-3 py-2 dark:border-white/20"
             />
           </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block font-medium" htmlFor="metaphor-tag">metaphor_tag</label>
+              <input
+                id="metaphor-tag"
+                value={metaphorTag}
+                onChange={(event) => setMetaphorTag(event.target.value)}
+                className="w-full rounded-lg border border-black/10 bg-transparent px-3 py-2 dark:border-white/20"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block font-medium" htmlFor="metaphor-resource">resource_id</label>
+              <input
+                id="metaphor-resource"
+                value={metaphorResource}
+                onChange={(event) => setMetaphorResource(event.target.value)}
+                className="w-full rounded-lg border border-black/10 bg-transparent px-3 py-2 dark:border-white/20"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onRegisterMetaphor}
+              disabled={savingMetaphor}
+              className="rounded-lg border border-black/10 px-3 py-2 hover:bg-black/5 disabled:opacity-60 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              {savingMetaphor ? "备案中..." : "保存隐喻备案"}
+            </button>
+            <button
+              type="button"
+              onClick={loadMetaphors}
+              disabled={loadingMetaphors}
+              className="rounded-lg border border-black/10 px-3 py-2 hover:bg-black/5 disabled:opacity-60 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              {loadingMetaphors ? "读取中..." : "读取玩家备案"}
+            </button>
+          </div>
+
+          <pre className="max-h-36 overflow-auto rounded-lg border border-black/10 p-3 text-xs dark:border-white/20">
+            {JSON.stringify(playerMetaphors, null, 2)}
+          </pre>
+        </div>
+
+        <h2 className="mt-6 text-base font-semibold">Step 2 · 诗歌输入</h2>
+
+        <div className="mt-3 space-y-3 text-sm">
 
           <div>
             <label className="mb-1 block font-medium" htmlFor="poem">poem</label>
@@ -147,6 +263,8 @@ export default function PoetryClient() {
               className="w-full rounded-lg border border-black/10 bg-transparent px-3 py-2 dark:border-white/20"
             />
           </div>
+
+          <h2 className="mt-2 text-base font-semibold">Step 3 · 场景生成</h2>
 
           <button
             type="button"
@@ -200,6 +318,13 @@ export default function PoetryClient() {
           <h2 className="text-base font-semibold">Selected Fragments</h2>
           <pre className="mt-2 max-h-52 overflow-auto rounded-lg border border-black/10 p-3 text-xs dark:border-white/20">
             {JSON.stringify(summary.selectedFragments, null, 2)}
+          </pre>
+        </article>
+
+        <article className="rounded-xl border border-black/10 p-4 dark:border-white/20">
+          <h2 className="text-base font-semibold">Metaphor Matches</h2>
+          <pre className="mt-2 max-h-52 overflow-auto rounded-lg border border-black/10 p-3 text-xs dark:border-white/20">
+            {JSON.stringify(summary.playerTagMatches, null, 2)}
           </pre>
         </article>
 
