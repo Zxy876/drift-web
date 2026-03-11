@@ -827,3 +827,78 @@ export async function deletePlayerTag(
     };
   }
 }
+
+export type PoetryGenerateRequest = {
+  player_id: string;
+  poem: string;
+  scene_theme?: string;
+  scene_hint?: string;
+  anchor?: string;
+  player_position?: Record<string, unknown>;
+  max_resources?: number;
+};
+
+export type PoetryGeneratePayload = Record<string, unknown>;
+
+export async function generatePoetryScene(
+  payload: PoetryGenerateRequest,
+  baseUrlOverride?: string,
+): Promise<{
+  ok: boolean;
+  status: number;
+  baseUrl: string;
+  data: PoetryGeneratePayload | null;
+  error: string | null;
+}> {
+  const baseUrl = normalizeBaseUrl(baseUrlOverride);
+  const requestUrl = `${baseUrl}/poetry/generate`;
+
+  try {
+    const response = await fetch(requestUrl, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    let body: PoetryGeneratePayload | null = null;
+    try {
+      body = (await response.json()) as PoetryGeneratePayload;
+    } catch {
+      body = null;
+    }
+
+    if (!response.ok) {
+      const detail =
+        body && typeof body === "object" && !Array.isArray(body) && typeof (body as Record<string, unknown>).detail === "string"
+          ? String((body as Record<string, unknown>).detail)
+          : `backend returned ${response.status}`;
+      return {
+        ok: false,
+        status: response.status,
+        baseUrl,
+        data: body,
+        error: detail,
+      };
+    }
+
+    return {
+      ok: true,
+      status: response.status,
+      baseUrl,
+      data: body,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 503,
+      baseUrl,
+      data: null,
+      error: error instanceof Error ? error.message : "network error",
+    };
+  }
+}
