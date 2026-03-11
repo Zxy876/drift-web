@@ -330,6 +330,14 @@ function extractPrimaryInput(worldState: JsonMap | null, debugTasks: JsonMap | n
 } {
   const candidates: Array<{ source: string; text: string }> = [
     {
+      source: "debug.scene_generation.last_player_input.text",
+      text: asString(getPath(debugTasks, ["scene_generation", "last_player_input", "text"])),
+    },
+    {
+      source: "debug.player_input.text",
+      text: asString(getPath(debugTasks, ["player_input", "text"])),
+    },
+    {
       source: "debug.last_rule_event.raw_payload.text",
       text: asString(getPath(debugTasks, ["last_rule_event", "raw_payload", "text"])),
     },
@@ -377,9 +385,17 @@ export default function IntentDebuggerClient({ playerId, payload, ok, error }: I
 
   const worldState = asObject(payload?.world_state);
   const debugTasks = asObject(payload?.debug_tasks);
+  const sceneGeneration = asObject(getPath(debugTasks, ["scene_generation"])) ?? {};
   const debugTasksError = asString(payload?.debug_tasks_error);
 
   const primaryInput = extractPrimaryInput(worldState, debugTasks);
+
+  const lastIntentSummary =
+    asObject(getPath(debugTasks, ["scene_generation", "last_intent"])) ??
+    asObject(getPath(debugTasks, ["last_intent"])) ??
+    asObject(getPath(worldState, ["narrative_state", "last_decision", "intent"])) ??
+    asObject(getPath(worldState, ["last_decision", "intent"])) ??
+    null;
 
   const narrativeDecision =
     asObject(worldState?.narrative_decision) ??
@@ -389,18 +405,21 @@ export default function IntentDebuggerClient({ playerId, payload, ok, error }: I
 
   const intentReason = asString(narrativeDecision.reason);
   const intentType =
+    asString(lastIntentSummary?.type) ||
     asString(getPath(debugTasks, ["last_rule_event", "event", "event_type"])) ||
     asString(getPath(debugTasks, ["last_rule_event", "event", "type"])) ||
     asString(getPath(debugTasks, ["last_rule_event", "event", "quest_event"])) ||
     (intentReason ? "NARRATIVE_DECISION" : "UNKNOWN");
 
   const confidence =
+    asNumber(lastIntentSummary?.confidence) ??
     asNumber(getPath(debugTasks, ["prediction", "semantic_score"])) ??
     asNumber(getPath(debugTasks, ["scene_generation", "candidate_scores", 0, "score"])) ??
     scoreFromReason(intentReason);
 
   const intentParams =
     asObject(getPath(debugTasks, ["last_rule_event", "raw_payload"])) ??
+    lastIntentSummary ??
     asObject(narrativeDecision.input_snapshot) ??
     null;
 
@@ -433,10 +452,36 @@ export default function IntentDebuggerClient({ playerId, payload, ok, error }: I
   const inventoryResources = asObject(getPath(debugTasks, ["inventory_resources"])) ??
     asObject(getPath(debugTasks, ["level_evolution", "signals", "inventory_resources"])) ??
     {};
+  const registryResources =
+    asObject(getPath(debugTasks, ["registry_resources"])) ??
+    asObject(getPath(sceneGeneration, ["registry_resources"])) ??
+    asObject(getPath(debugTasks, ["prediction", "registry_resources"])) ??
+    {};
+  const registryMatchTag =
+    asString(getPath(debugTasks, ["registry_match_tag"])) ||
+    asString(getPath(sceneGeneration, ["registry_match_tag"])) ||
+    asString(getPath(debugTasks, ["prediction", "registry_match_tag"]));
+  const registryBindings = asArray(getPath(sceneGeneration, ["registry_bindings"]));
 
   const resourceMappings: string[] = [];
 
   resourceMappings.push(...selectedAssets.map((asset) => `selected_asset: ${asset}`));
+
+  if (registryMatchTag) {
+    resourceMappings.push(`registry_match_tag: ${registryMatchTag}`);
+  }
+
+  if (registryBindings.length > 0) {
+    resourceMappings.push(`registry_bindings: ${registryBindings.length}`);
+  }
+
+  for (const [key, value] of Object.entries(registryResources)) {
+    const amount = asNumber(value);
+    if (!key || amount === null) {
+      continue;
+    }
+    resourceMappings.push(`registry: ${key} = ${amount}`);
+  }
 
   for (const [key, value] of Object.entries(inventoryResources)) {
     const amount = asNumber(value);
@@ -482,7 +527,6 @@ export default function IntentDebuggerClient({ playerId, payload, ok, error }: I
       ? normalizeStringList(worldState?.blocked_by)
       : normalizeStringList(getPath(worldState, ["narrative_state", "blocked_by"]));
 
-  const sceneGeneration = asObject(getPath(debugTasks, ["scene_generation"])) ?? {};
   const selectedFragment =
     asString(sceneGeneration.selected_root) ||
     asString(getPath(debugTasks, ["prediction", "predicted_root"])) ||
@@ -618,7 +662,9 @@ export default function IntentDebuggerClient({ playerId, payload, ok, error }: I
   }
 
   const worldPatch =
+    asObject(getPath(sceneGeneration, ["last_rule_event_result", "world_patch"])) ??
     asObject(getPath(debugTasks, ["last_rule_event", "raw_payload", "world_patch"])) ??
+    asObject(getPath(debugTasks, ["result", "world_patch"])) ??
     asObject(getPath(debugTasks, ["world_patch"])) ??
     asObject(getPath(worldState, ["world_patch"])) ??
     null;
